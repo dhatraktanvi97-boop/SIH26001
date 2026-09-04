@@ -1,0 +1,4 @@
+timestamp,rainfall,soil_moisture,ground_movement,water_level,landslide_risk,flood_risk,mine_collapse_risk
+2026-09-04 10:25:11,191.8,99.32,0.29,35.67,HIGH,HIGH,MEDIUM
+2026-09-04 10:25:13,103.91,34.78,19.07,29.33,HIGH,MEDIUM,HIGH
+2026-09-04 10:25:17,199.33,55.6,10.7,28.27,HIGH,HIGH,MEDIUM

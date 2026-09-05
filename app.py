@@ -4,8 +4,10 @@ import joblib
 import random
 import os
 import pandas as pd
+import time
 from datetime import datetime
 from streamlit_folium import st_folium
+from streamlit_autorefresh import st_autorefresh
 
 from data.sites import MONITORING_SITES
 from database.data_receiver import receive_sensor_data
@@ -23,17 +25,30 @@ st.set_page_config(
 
 
 # =========================================================
+# AUTO REFRESH
+# =========================================================
+
+st_autorefresh(
+    interval=10000,
+    key="sensor_refresh"
+)
+
+
+# =========================================================
 # LOAD AI MODEL
 # =========================================================
 
 MODEL_PATH = "ai_model/landslide_model.pkl"
 
 if not os.path.exists(MODEL_PATH):
+
     st.error(
-        "AI model not found. Please run:\n\n"
+        "AI model not found. Run:\n\n"
         "py -3.13 ai_model/train_model.py"
     )
+
     st.stop()
+
 
 model = joblib.load(MODEL_PATH)
 
@@ -173,28 +188,16 @@ def generate_sensor_reading(
     return {
 
         "rainfall":
-            round(
-                rainfall,
-                2
-            ),
+            round(rainfall, 2),
 
         "soil_moisture":
-            round(
-                soil_moisture,
-                2
-            ),
+            round(soil_moisture, 2),
 
         "ground_movement":
-            round(
-                ground_movement,
-                2
-            ),
+            round(ground_movement, 2),
 
         "water_level":
-            round(
-                water_level,
-                2
-            ),
+            round(water_level, 2),
 
         "last_update":
             datetime.now().strftime(
@@ -204,7 +207,7 @@ def generate_sensor_reading(
 
 
 # =========================================================
-# INITIALIZE MONITORING SITES
+# INITIALIZE SITE DATA
 # =========================================================
 
 if "site_data" not in st.session_state:
@@ -270,6 +273,59 @@ selected_site = MONITORING_SITES[
 ]
 
 
+# =========================================================
+# AUTOMATIC SENSOR UPDATE
+# =========================================================
+
+previous_data = (
+    st.session_state.site_data[
+        selected_site_id
+    ]
+)
+
+
+new_sensor_data = generate_sensor_reading(
+    previous_data
+)
+
+
+received_packet = receive_sensor_data(
+
+    selected_site_id,
+
+    new_sensor_data["rainfall"],
+
+    new_sensor_data["soil_moisture"],
+
+    new_sensor_data["ground_movement"],
+
+    new_sensor_data["water_level"]
+
+)
+
+
+st.session_state.site_data[
+    selected_site_id
+] = {
+
+    "rainfall":
+        received_packet["rainfall"],
+
+    "soil_moisture":
+        received_packet["soil_moisture"],
+
+    "ground_movement":
+        received_packet["ground_movement"],
+
+    "water_level":
+        received_packet["water_level"],
+
+    "last_update":
+        received_packet["timestamp"]
+
+}
+
+
 selected_data = (
     st.session_state.site_data[
         selected_site_id
@@ -278,71 +334,12 @@ selected_data = (
 
 
 # =========================================================
-# UPDATE SENSOR DATA
+# MANUAL UPDATE BUTTON
 # =========================================================
 
 if st.sidebar.button(
     "🔄 Get New Sensor Readings"
 ):
-
-    previous_data = (
-        st.session_state.site_data[
-            selected_site_id
-        ]
-    )
-
-
-    new_sensor_data = generate_sensor_reading(
-        previous_data
-    )
-
-
-    # -----------------------------------------------------
-    # Send generated sensor data through receiver
-    # -----------------------------------------------------
-
-    received_packet = receive_sensor_data(
-
-        selected_site_id,
-
-        new_sensor_data["rainfall"],
-
-        new_sensor_data["soil_moisture"],
-
-        new_sensor_data["ground_movement"],
-
-        new_sensor_data["water_level"]
-
-    )
-
-
-    # -----------------------------------------------------
-    # Store received data in dashboard session
-    # -----------------------------------------------------
-
-    st.session_state.site_data[
-        selected_site_id
-    ] = {
-
-        "rainfall":
-            received_packet["rainfall"],
-
-        "soil_moisture":
-            received_packet["soil_moisture"],
-
-        "ground_movement":
-            received_packet["ground_movement"],
-
-        "water_level":
-            received_packet["water_level"],
-
-        "last_update":
-            received_packet["timestamp"]
-
-    }
-
-
-    st.session_state.new_reading = True
 
     st.rerun()
 
@@ -359,6 +356,15 @@ st.title(
 st.caption(
     "SIH26001 | Landslide Risk Monitoring "
     "for the North Eastern Region"
+)
+
+
+# =========================================================
+# LIVE STATUS
+# =========================================================
+
+st.success(
+    "🟢 LIVE MONITORING ACTIVE"
 )
 
 
@@ -391,7 +397,7 @@ st.caption(
 
 
 # =========================================================
-# AI INPUT DATA
+# AI INPUT
 # =========================================================
 
 input_data = pd.DataFrame(
@@ -423,7 +429,7 @@ input_data = pd.DataFrame(
 
 
 # =========================================================
-# AI LANDSLIDE PREDICTION
+# LANDSLIDE PREDICTION
 # =========================================================
 
 landslide_prediction = model.predict(
@@ -432,7 +438,7 @@ landslide_prediction = model.predict(
 
 
 # =========================================================
-# FLOOD RISK
+# FLOOD
 # =========================================================
 
 flood_score = calculate_flood_score(
@@ -443,13 +449,14 @@ flood_score = calculate_flood_score(
 
 )
 
+
 flood_risk = risk_level(
     flood_score
 )
 
 
 # =========================================================
-# GROUND COLLAPSE RISK
+# GROUND COLLAPSE
 # =========================================================
 
 ground_collapse_score = (
@@ -519,7 +526,7 @@ overall_risk = risk_values[
 
 
 # =========================================================
-# ALERT SYSTEM
+# ALERT
 # =========================================================
 
 st.subheader(
@@ -534,25 +541,12 @@ if overall_risk == "HIGH":
         f"{highest_hazard}"
     )
 
-    st.warning(
-        "Immediate monitoring and "
-        "appropriate emergency response "
-        "should be considered."
-    )
-
-
 elif overall_risk == "MEDIUM":
 
     st.warning(
         f"🟠 MEDIUM RISK — "
         f"{highest_hazard}"
     )
-
-    st.info(
-        "Increase monitoring frequency "
-        "and watch for rapid changes."
-    )
-
 
 else:
 
@@ -567,7 +561,7 @@ else:
 # =========================================================
 
 st.subheader(
-    "📡 Sensor Readings"
+    "📡 Live Sensor Readings"
 )
 
 
@@ -577,44 +571,32 @@ col1, col2, col3, col4 = st.columns(4)
 with col1:
 
     st.metric(
-
         "Rainfall",
-
         f"{selected_data['rainfall']} mm"
-
     )
 
 
 with col2:
 
     st.metric(
-
         "Soil Moisture",
-
         f"{selected_data['soil_moisture']} %"
-
     )
 
 
 with col3:
 
     st.metric(
-
         "Ground Movement",
-
         f"{selected_data['ground_movement']} mm"
-
     )
 
 
 with col4:
 
     st.metric(
-
         "Water Level",
-
         f"{selected_data['water_level']} %"
-
     )
 
 
@@ -690,12 +672,6 @@ st.subheader(
 )
 
 
-st.caption(
-    "Click a monitoring-site marker "
-    "to inspect that site."
-)
-
-
 hazard_map = folium.Map(
 
     location=[
@@ -710,7 +686,7 @@ hazard_map = folium.Map(
 
 
 # =========================================================
-# ADD MONITORING SITES
+# ADD SITES
 # =========================================================
 
 for site_id, site in (
@@ -963,7 +939,7 @@ map_result = st_folium(
 
 
 # =========================================================
-# MAP CLICK DETECTION
+# MAP CLICK
 # =========================================================
 
 clicked = map_result.get(
@@ -1056,7 +1032,7 @@ if clicked:
 
 
 # =========================================================
-# SELECTED SITE DETAILS
+# SITE DETAILS
 # =========================================================
 
 st.subheader(
@@ -1133,97 +1109,45 @@ HISTORY_FILE = (
 )
 
 
-# =========================================================
-# LOG NEW READING
-# =========================================================
+history_record = {
 
-if st.session_state.new_reading:
+    "timestamp":
+        datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        ),
 
-    history_record = {
+    "site_id":
+        selected_site_id,
 
-        "timestamp":
-            datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
+    "site_name":
+        selected_site["name"],
 
-        "site_id":
-            selected_site_id,
+    "rainfall":
+        selected_data["rainfall"],
 
-        "site_name":
-            selected_site["name"],
+    "soil_moisture":
+        selected_data["soil_moisture"],
 
-        "rainfall":
-            selected_data["rainfall"],
-
-        "soil_moisture":
-            selected_data["soil_moisture"],
-
-        "ground_movement":
-            selected_data[
-                "ground_movement"
-            ],
-
-        "water_level":
-            selected_data[
-                "water_level"
-            ],
-
-        "landslide_risk":
-            landslide_prediction,
-
-        "flood_risk":
-            flood_risk,
-
-        "ground_collapse_risk":
-            ground_collapse_risk
-    }
-
-
-    if os.path.exists(
-        HISTORY_FILE
-    ):
-
-        history_df = pd.read_csv(
-            HISTORY_FILE
-        )
-
-    else:
-
-        history_df = pd.DataFrame()
-
-
-    new_row = pd.DataFrame(
-        [history_record]
-    )
-
-
-    history_df = pd.concat(
-
-        [
-            history_df,
-            new_row
+    "ground_movement":
+        selected_data[
+            "ground_movement"
         ],
 
-        ignore_index=True
+    "water_level":
+        selected_data[
+            "water_level"
+        ],
 
-    )
+    "landslide_risk":
+        landslide_prediction,
 
+    "flood_risk":
+        flood_risk,
 
-    history_df.to_csv(
+    "ground_collapse_risk":
+        ground_collapse_risk
+}
 
-        HISTORY_FILE,
-
-        index=False
-
-    )
-
-
-    st.session_state.new_reading = False
-
-
-# =========================================================
-# LOAD HISTORY
-# =========================================================
 
 if os.path.exists(
     HISTORY_FILE
@@ -1238,9 +1162,28 @@ else:
     history_df = pd.DataFrame()
 
 
-# =========================================================
-# DISPLAY SITE HISTORY
-# =========================================================
+new_row = pd.DataFrame(
+    [history_record]
+)
+
+
+history_df = pd.concat(
+
+    [
+        history_df,
+        new_row
+    ],
+
+    ignore_index=True
+
+)
+
+
+history_df.to_csv(
+    HISTORY_FILE,
+    index=False
+)
+
 
 if not history_df.empty:
 
@@ -1273,14 +1216,6 @@ if not history_df.empty:
         )
 
 
-        st.write(
-
-            "Historical data — "
-            f"**{selected_site['name']}**"
-
-        )
-
-
         st.line_chart(
 
             site_history.set_index(
@@ -1306,16 +1241,8 @@ if not history_df.empty:
     else:
 
         st.info(
-            "More readings are required "
-            "to display historical trends."
+            "Collecting historical readings..."
         )
-
-else:
-
-    st.info(
-        "Generate new sensor readings "
-        "to begin historical monitoring."
-    )
 
 
 # =========================================================
@@ -1358,10 +1285,8 @@ with status3:
 # =========================================================
 
 st.caption(
-
     "Prototype: sensor values are currently "
     "simulated. In deployment, the same "
     "pipeline will receive measurements "
     "from field monitoring units."
-
 )

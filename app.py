@@ -13,7 +13,7 @@ from database.data_receiver import receive_sensor_data
 
 
 # =========================================================
-# PAGE CONFIGURATION
+# PAGE CONFIG
 # =========================================================
 
 st.set_page_config(
@@ -24,7 +24,7 @@ st.set_page_config(
 
 
 # =========================================================
-# LOAD MONITORING SITES
+# LOAD SITES
 # =========================================================
 
 MONITORING_SITES = load_sites()
@@ -50,12 +50,10 @@ MODEL_PATH = os.path.join(
 )
 
 if not os.path.exists(MODEL_PATH):
-
     st.error(
-        "AI model not found. Run:\n\n"
-        "py -3.13 ai_model/train_model.py"
+        "AI model not found.\n\n"
+        "Run: py -3.13 ai_model/train_model.py"
     )
-
     st.stop()
 
 model = joblib.load(MODEL_PATH)
@@ -66,45 +64,40 @@ model = joblib.load(MODEL_PATH)
 # =========================================================
 
 def risk_level(score):
-
     if score >= 70:
         return "HIGH"
-
     elif score >= 40:
         return "MEDIUM"
-
     return "LOW"
 
 
-def calculate_flood_score(
-    rainfall,
-    water_level
-):
+def risk_number(level):
+    return {
+        "LOW": 1,
+        "MEDIUM": 2,
+        "HIGH": 3
+    }[level]
 
-    score = (
-        rainfall * 0.5
-        + water_level * 0.5
-    )
 
+def flood_score(rainfall, water_level):
     return min(
-        round(score, 2),
-        100
+        100,
+        round(
+            rainfall * 0.5 +
+            water_level * 0.5,
+            2
+        )
     )
 
 
-def calculate_ground_collapse_score(
-    ground_movement,
-    soil_moisture
-):
-
-    score = (
-        ground_movement * 5 * 0.6
-        + soil_moisture * 0.4
-    )
-
+def ground_score(ground_movement, soil_moisture):
     return min(
-        round(score, 2),
-        100
+        100,
+        round(
+            ground_movement * 5 * 0.6 +
+            soil_moisture * 0.4,
+            2
+        )
     )
 
 
@@ -112,148 +105,93 @@ def calculate_ground_collapse_score(
 # SENSOR SIMULATOR
 # =========================================================
 
-def generate_sensor_reading(
-    previous=None
-):
+def generate_sensor_reading(previous=None):
 
     if previous is None:
 
         return {
-
-            "rainfall":
-                round(
-                    random.uniform(10, 80),
-                    2
-                ),
-
-            "soil_moisture":
-                round(
-                    random.uniform(40, 70),
-                    2
-                ),
-
-            "ground_movement":
-                round(
-                    random.uniform(0.5, 5),
-                    2
-                ),
-
-            "water_level":
-                round(
-                    random.uniform(20, 60),
-                    2
-                ),
-
-            "last_update":
-                datetime.now().strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
+            "rainfall": round(random.uniform(10, 80), 2),
+            "soil_moisture": round(random.uniform(40, 70), 2),
+            "ground_movement": round(random.uniform(0.5, 5), 2),
+            "water_level": round(random.uniform(20, 60), 2),
+            "last_update": datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
         }
-
-    rainfall = (
-        previous["rainfall"]
-        + random.uniform(-8, 15)
-    )
-
-    soil_moisture = (
-        previous["soil_moisture"]
-        + random.uniform(-3, 5)
-    )
-
-    ground_movement = (
-        previous["ground_movement"]
-        + random.uniform(-0.5, 1.2)
-    )
-
-    water_level = (
-        previous["water_level"]
-        + random.uniform(-3, 6)
-    )
 
     rainfall = max(
         0,
-        min(300, rainfall)
+        min(
+            300,
+            previous["rainfall"] +
+            random.uniform(-8, 15)
+        )
     )
 
     soil_moisture = max(
         0,
-        min(100, soil_moisture)
+        min(
+            100,
+            previous["soil_moisture"] +
+            random.uniform(-3, 5)
+        )
     )
 
     ground_movement = max(
         0,
-        min(20, ground_movement)
+        min(
+            20,
+            previous["ground_movement"] +
+            random.uniform(-0.5, 1.2)
+        )
     )
 
     water_level = max(
         0,
-        min(100, water_level)
+        min(
+            100,
+            previous["water_level"] +
+            random.uniform(-3, 6)
+        )
     )
 
     return {
-
-        "rainfall":
-            round(rainfall, 2),
-
-        "soil_moisture":
-            round(soil_moisture, 2),
-
-        "ground_movement":
-            round(ground_movement, 2),
-
-        "water_level":
-            round(water_level, 2),
-
-        "last_update":
-            datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+        "rainfall": round(rainfall, 2),
+        "soil_moisture": round(soil_moisture, 2),
+        "ground_movement": round(ground_movement, 2),
+        "water_level": round(water_level, 2),
+        "last_update": datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
     }
 
 
 # =========================================================
-# INITIALIZE SESSION STATE
+# SESSION DATA
 # =========================================================
 
 if "site_data" not in st.session_state:
-
     st.session_state.site_data = {}
 
-
-# Add sensor data for every existing/new site
 for site_id in MONITORING_SITES:
 
     if site_id not in st.session_state.site_data:
-
         st.session_state.site_data[site_id] = (
             generate_sensor_reading()
         )
 
-
-# Remove session data for deleted sites
 for site_id in list(
     st.session_state.site_data.keys()
 ):
 
     if site_id not in MONITORING_SITES:
-
         del st.session_state.site_data[site_id]
 
 
-# =========================================================
-# SELECTED SITE
-# =========================================================
-
-site_ids = list(
-    MONITORING_SITES.keys()
-)
+site_ids = list(MONITORING_SITES.keys())
 
 if not site_ids:
-
-    st.error(
-        "No monitoring sites available."
-    )
-
+    st.error("No monitoring sites available.")
     st.stop()
 
 
@@ -261,77 +199,37 @@ if (
     "selected_site_id"
     not in st.session_state
 ):
-
-    st.session_state.selected_site_id = (
-        site_ids[0]
-    )
+    st.session_state.selected_site_id = site_ids[0]
 
 
 if (
     st.session_state.selected_site_id
     not in site_ids
 ):
-
-    st.session_state.selected_site_id = (
-        site_ids[0]
-    )
+    st.session_state.selected_site_id = site_ids[0]
 
 
 # =========================================================
 # SIDEBAR
 # =========================================================
 
-st.sidebar.title(
-    "🌍 Monitoring Network"
-)
-
-st.sidebar.error("TEST: NEW APP.PY IS RUNNING")
-# =========================================================
-# SELECT SITE
-# =========================================================
-
-selected_site_id = st.sidebar.selectbox(
-
-    "Select Monitoring Site",
-
-    site_ids,
-
-    key="selected_site_id",
-
-    format_func=lambda x:
-        (
-            f"{MONITORING_SITES[x]['name']}"
-            f" ({x})"
-        )
-)
-
-
-selected_site = MONITORING_SITES[
-    selected_site_id
-]
+st.sidebar.title("🌍 Monitoring Network")
 
 
 # =========================================================
-# ADD MONITORING SITE
+# ADD SITE
 # =========================================================
 
-st.sidebar.divider()
+st.sidebar.subheader("➕ Add Monitoring Site")
 
-st.sidebar.subheader(
-    "➕ Add Monitoring Site"
-)
+with st.sidebar.form("add_site_form"):
 
-with st.sidebar.form(
-    "add_site_form",
-    clear_on_submit=True
-):
-
-    new_site_id = st.text_input(
+    new_id = st.text_input(
         "Site ID",
         placeholder="Example: SIK-01"
     )
 
-    new_site_name = st.text_input(
+    new_name = st.text_input(
         "Site Name",
         placeholder="Example: Sikkim Site 01"
     )
@@ -346,7 +244,7 @@ with st.sidebar.form(
         placeholder="Example: Sikkim"
     )
 
-    new_latitude = st.number_input(
+    new_lat = st.number_input(
         "Latitude",
         min_value=-90.0,
         max_value=90.0,
@@ -354,7 +252,7 @@ with st.sidebar.form(
         format="%.6f"
     )
 
-    new_longitude = st.number_input(
+    new_lon = st.number_input(
         "Longitude",
         min_value=-180.0,
         max_value=180.0,
@@ -363,207 +261,125 @@ with st.sidebar.form(
     )
 
     add_button = st.form_submit_button(
-        "➕ Add Site",
+        "➕ ADD SITE",
         use_container_width=True
     )
 
 
 if add_button:
 
-    if not new_site_id.strip():
+    if not new_id.strip():
+        st.sidebar.error("Enter Site ID.")
 
-        st.sidebar.error(
-            "Enter Site ID."
-        )
-
-    elif not new_site_name.strip():
-
-        st.sidebar.error(
-            "Enter Site Name."
-        )
+    elif not new_name.strip():
+        st.sidebar.error("Enter Site Name.")
 
     elif not new_city.strip():
-
-        st.sidebar.error(
-            "Enter City."
-        )
+        st.sidebar.error("Enter City.")
 
     elif not new_state.strip():
-
-        st.sidebar.error(
-            "Enter State."
-        )
+        st.sidebar.error("Enter State.")
 
     else:
 
         success, message = add_site(
-
-            new_site_id,
-
-            new_site_name,
-
+            new_id,
+            new_name,
             new_city,
-
             new_state,
-
-            new_latitude,
-
-            new_longitude
+            new_lat,
+            new_lon
         )
 
         if success:
 
-            st.session_state.site_data[
-                new_site_id.strip().upper()
-            ] = generate_sensor_reading()
+            site_id = new_id.strip().upper()
 
-            st.session_state.selected_site_id = (
-                new_site_id.strip().upper()
+            st.session_state.site_data[site_id] = (
+                generate_sensor_reading()
             )
 
-            st.sidebar.success(
-                message
-            )
+            st.session_state.selected_site_id = site_id
 
             st.rerun()
 
         else:
+            st.sidebar.error(message)
 
-            st.sidebar.error(
-                message
-            )
+
+st.sidebar.divider()
 
 
 # =========================================================
-# DELETE MONITORING SITE
+# SELECT SITE
+# =========================================================
+
+st.sidebar.subheader("📍 Select Monitoring Site")
+
+selected_site_id = st.sidebar.selectbox(
+    "Monitoring Site",
+    site_ids,
+    key="selected_site_id",
+    format_func=lambda x:
+        f"{MONITORING_SITES[x]['name']} ({x})"
+)
+
+selected_site = MONITORING_SITES[
+    selected_site_id
+]
+
+
+# =========================================================
+# DELETE SITE
 # =========================================================
 
 st.sidebar.divider()
 
-with st.sidebar.expander(
-    "🗑️ Remove Monitoring Site"
-):
+with st.sidebar.expander("🗑️ Remove Monitoring Site"):
 
-    delete_site_id = st.selectbox(
-
+    delete_id = st.selectbox(
         "Select Site",
-
         site_ids,
-
         format_func=lambda x:
-            (
-                f"{MONITORING_SITES[x]['name']}"
-                f" ({x})"
-            ),
-
+            f"{MONITORING_SITES[x]['name']} ({x})",
         key="delete_site_selector"
     )
 
     if st.button(
-        "🗑️ Delete Site",
+        "🗑️ DELETE SITE",
         use_container_width=True
     ):
 
         if len(site_ids) <= 1:
 
-            st.error(
-                "At least one monitoring site must remain."
+            st.sidebar.error(
+                "At least one site must remain."
             )
 
         else:
 
-            success, message = delete_site(
-                delete_site_id
-            )
+            success, message = delete_site(delete_id)
 
             if success:
 
-                if (
-                    delete_site_id
-                    in st.session_state.site_data
-                ):
+                if delete_id in st.session_state.site_data:
+                    del st.session_state.site_data[delete_id]
 
-                    del st.session_state.site_data[
-                        delete_site_id
-                    ]
+                remaining = [
+                    x for x in site_ids
+                    if x != delete_id
+                ]
 
-                st.session_state.selected_site_id = (
-                    site_ids[0]
-                    if site_ids[0] != delete_site_id
-                    else site_ids[1]
-                )
+                st.session_state.selected_site_id = remaining[0]
 
                 st.rerun()
 
             else:
-
-                st.error(
-                    message
-                )
+                st.sidebar.error(message)
 
 
 # =========================================================
-# AUTOMATIC SENSOR UPDATE
-# =========================================================
-
-previous_data = (
-    st.session_state.site_data[
-        selected_site_id
-    ]
-)
-
-
-# Update selected site every automatic refresh
-new_sensor_data = generate_sensor_reading(
-    previous_data
-)
-
-
-received_packet = receive_sensor_data(
-
-    selected_site_id,
-
-    new_sensor_data["rainfall"],
-
-    new_sensor_data["soil_moisture"],
-
-    new_sensor_data["ground_movement"],
-
-    new_sensor_data["water_level"]
-
-)
-
-
-st.session_state.site_data[
-    selected_site_id
-] = {
-
-    "rainfall":
-        received_packet["rainfall"],
-
-    "soil_moisture":
-        received_packet["soil_moisture"],
-
-    "ground_movement":
-        received_packet["ground_movement"],
-
-    "water_level":
-        received_packet["water_level"],
-
-    "last_update":
-        received_packet["timestamp"]
-}
-
-
-selected_data = (
-    st.session_state.site_data[
-        selected_site_id
-    ]
-)
-
-
-# =========================================================
-# MANUAL UPDATE
+# MANUAL SENSOR REFRESH
 # =========================================================
 
 if st.sidebar.button(
@@ -571,7 +387,84 @@ if st.sidebar.button(
     use_container_width=True
 ):
 
+    previous = st.session_state.site_data[
+        selected_site_id
+    ]
+
+    new_data = generate_sensor_reading(previous)
+
+    packet = receive_sensor_data(
+        selected_site_id,
+        new_data["rainfall"],
+        new_data["soil_moisture"],
+        new_data["ground_movement"],
+        new_data["water_level"]
+    )
+
+    st.session_state.site_data[
+        selected_site_id
+    ] = {
+        "rainfall": packet["rainfall"],
+        "soil_moisture": packet["soil_moisture"],
+        "ground_movement": packet["ground_movement"],
+        "water_level": packet["water_level"],
+        "last_update": packet["timestamp"]
+    }
+
     st.rerun()
+
+
+# =========================================================
+# AUTOMATIC SENSOR UPDATE
+# =========================================================
+
+if (
+    "last_refresh_count"
+    not in st.session_state
+):
+
+    st.session_state.last_refresh_count = (
+        refresh_count
+    )
+
+elif (
+    refresh_count
+    !=
+    st.session_state.last_refresh_count
+):
+
+    previous = st.session_state.site_data[
+        selected_site_id
+    ]
+
+    new_data = generate_sensor_reading(previous)
+
+    packet = receive_sensor_data(
+        selected_site_id,
+        new_data["rainfall"],
+        new_data["soil_moisture"],
+        new_data["ground_movement"],
+        new_data["water_level"]
+    )
+
+    st.session_state.site_data[
+        selected_site_id
+    ] = {
+        "rainfall": packet["rainfall"],
+        "soil_moisture": packet["soil_moisture"],
+        "ground_movement": packet["ground_movement"],
+        "water_level": packet["water_level"],
+        "last_update": packet["timestamp"]
+    }
+
+    st.session_state.last_refresh_count = (
+        refresh_count
+    )
+
+
+selected_data = st.session_state.site_data[
+    selected_site_id
+]
 
 
 # =========================================================
@@ -588,14 +481,7 @@ st.caption(
     "for the North Eastern Region"
 )
 
-
-# =========================================================
-# STATUS
-# =========================================================
-
-st.success(
-    "🟢 LIVE MONITORING ACTIVE"
-)
+st.success("🟢 LIVE MONITORING ACTIVE")
 
 
 # =========================================================
@@ -607,13 +493,12 @@ st.subheader(
 )
 
 st.write(
-    f"**Location:** "
-    f"{selected_site['city']}, "
+    f"**Location:** {selected_site['city']}, "
     f"{selected_site['state']}"
 )
 
 st.write(
-    f"**Site ID:** `{selected_site_id}`  |  "
+    f"**Site ID:** `{selected_site_id}` | "
     f"**Status:** 🟢 {selected_site['status']}"
 )
 
@@ -628,35 +513,23 @@ st.caption(
 # =========================================================
 
 input_data = pd.DataFrame(
-
     [[
-
         selected_data["rainfall"],
-
         selected_data["soil_moisture"],
-
         selected_data["ground_movement"],
-
         selected_data["water_level"]
-
     ]],
-
     columns=[
-
         "rainfall",
-
         "soil_moisture",
-
         "ground_movement",
-
         "water_level"
-
     ]
 )
 
 
 # =========================================================
-# LANDSLIDE PREDICTION
+# LANDSLIDE
 # =========================================================
 
 landslide_prediction = model.predict(
@@ -668,116 +541,67 @@ landslide_prediction = model.predict(
 # FLOOD
 # =========================================================
 
-flood_score = calculate_flood_score(
-
+flood = flood_score(
     selected_data["rainfall"],
-
     selected_data["water_level"]
-
 )
 
-flood_risk = risk_level(
-    flood_score
-)
+flood_risk = risk_level(flood)
 
 
 # =========================================================
 # GROUND COLLAPSE
 # =========================================================
 
-ground_collapse_score = (
-    calculate_ground_collapse_score(
-
-        selected_data[
-            "ground_movement"
-        ],
-
-        selected_data[
-            "soil_moisture"
-        ]
-
-    )
+ground = ground_score(
+    selected_data["ground_movement"],
+    selected_data["soil_moisture"]
 )
 
-ground_collapse_risk = risk_level(
-    ground_collapse_score
-)
+ground_risk = risk_level(ground)
 
 
 # =========================================================
 # OVERALL RISK
 # =========================================================
 
-risk_values = {
-
-    "Landslide":
-        landslide_prediction,
-
-    "Flood":
-        flood_risk,
-
-    "Ground Collapse":
-        ground_collapse_risk
-
+hazards = {
+    "Landslide": landslide_prediction,
+    "Flood": flood_risk,
+    "Ground Collapse": ground_risk
 }
-
-
-risk_order = {
-
-    "LOW": 1,
-
-    "MEDIUM": 2,
-
-    "HIGH": 3
-
-}
-
 
 highest_hazard = max(
-
-    risk_values,
-
+    hazards,
     key=lambda x:
-        risk_order[
-            risk_values[x]
-        ]
-
+    risk_number(hazards[x])
 )
 
-
-overall_risk = risk_values[
-    highest_hazard
-]
+overall_risk = hazards[highest_hazard]
 
 
 # =========================================================
-# CURRENT ALERT
+# ALERT
 # =========================================================
 
-st.subheader(
-    "🚨 Current Hazard Status"
-)
-
+st.subheader("🚨 Current Hazard Status")
 
 if overall_risk == "HIGH":
 
     st.error(
-        f"🔴 HIGH RISK — "
-        f"{highest_hazard}"
+        f"🔴 HIGH RISK — {highest_hazard}"
     )
 
 elif overall_risk == "MEDIUM":
 
     st.warning(
-        f"🟠 MEDIUM RISK — "
-        f"{highest_hazard}"
+        f"🟠 MEDIUM RISK — {highest_hazard}"
     )
 
 else:
 
     st.success(
-        f"🟢 LOW RISK — "
-        f"{highest_hazard}"
+        f"🟢 LOW RISK — {highest_hazard}"
     )
 
 
@@ -785,35 +609,29 @@ else:
 # SENSOR READINGS
 # =========================================================
 
-st.subheader(
-    "📡 Live Sensor Readings"
-)
+st.subheader("📡 Live Sensor Readings")
 
-col1, col2, col3, col4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(4)
 
-with col1:
-
+with c1:
     st.metric(
         "Rainfall",
         f"{selected_data['rainfall']} mm"
     )
 
-with col2:
-
+with c2:
     st.metric(
         "Soil Moisture",
         f"{selected_data['soil_moisture']} %"
     )
 
-with col3:
-
+with c3:
     st.metric(
         "Ground Movement",
         f"{selected_data['ground_movement']} mm"
     )
 
-with col4:
-
+with c4:
     st.metric(
         "Water Level",
         f"{selected_data['water_level']} %"
@@ -824,41 +642,31 @@ with col4:
 # HAZARD ANALYSIS
 # =========================================================
 
-st.subheader(
-    "🧠 AI Hazard Analysis"
-)
+st.subheader("🧠 AI Hazard Analysis")
 
-col1, col2, col3 = st.columns(3)
+c1, c2, c3 = st.columns(3)
 
+with c1:
 
-with col1:
-
-    st.write(
-        "🏔️ **Landslide**"
-    )
+    st.write("🏔️ **Landslide**")
 
     if landslide_prediction == "HIGH":
-
         st.error("HIGH")
 
     elif landslide_prediction == "MEDIUM":
-
         st.warning("MEDIUM")
 
     else:
-
         st.success("LOW")
 
 
-with col2:
+with c2:
 
-    st.write(
-        "🌊 **Flood**"
-    )
+    st.write("🌊 **Flood**")
 
     st.metric(
         "Risk Score",
-        flood_score
+        flood
     )
 
     st.write(
@@ -866,206 +674,120 @@ with col2:
     )
 
 
-with col3:
+with c3:
 
-    st.write(
-        "⛏️ **Ground Collapse**"
-    )
+    st.write("⛏️ **Ground Collapse**")
 
     st.metric(
         "Risk Score",
-        ground_collapse_score
+        ground
     )
 
     st.write(
-        f"Risk Level: **{ground_collapse_risk}**"
+        f"Risk Level: **{ground_risk}**"
     )
 
 
 # =========================================================
-# REGIONAL MAP
+# MAP
 # =========================================================
 
-st.subheader(
-    "🗺️ Regional Monitoring Network"
-)
-
+st.subheader("🗺️ Regional Monitoring Network")
 
 hazard_map = folium.Map(
-
-    location=[
-        25.5,
-        92.5
-    ],
-
+    location=[25.5, 92.5],
     zoom_start=6,
-
     tiles="OpenStreetMap"
 )
 
 
-# =========================================================
-# ADD ALL MONITORING SITES
-# =========================================================
+for site_id, site in MONITORING_SITES.items():
 
-for site_id, site in (
-    MONITORING_SITES.items()
-):
-
-    data = (
-        st.session_state.site_data[
-            site_id
-        ]
-    )
-
+    data = st.session_state.site_data[site_id]
 
     site_input = pd.DataFrame(
-
         [[
-
             data["rainfall"],
-
             data["soil_moisture"],
-
             data["ground_movement"],
-
             data["water_level"]
-
         ]],
-
         columns=[
-
             "rainfall",
-
             "soil_moisture",
-
             "ground_movement",
-
             "water_level"
-
         ]
     )
-
 
     site_landslide = model.predict(
         site_input
     )[0]
 
-
-    site_flood_score = (
-        calculate_flood_score(
-
-            data["rainfall"],
-
-            data["water_level"]
-
-        )
+    site_flood_score = flood_score(
+        data["rainfall"],
+        data["water_level"]
     )
-
 
     site_flood = risk_level(
         site_flood_score
     )
 
-
-    site_ground_score = (
-        calculate_ground_collapse_score(
-
-            data["ground_movement"],
-
-            data["soil_moisture"]
-
-        )
+    site_ground_score = ground_score(
+        data["ground_movement"],
+        data["soil_moisture"]
     )
-
 
     site_ground = risk_level(
         site_ground_score
     )
 
-
-    site_risks = {
-
-        "Landslide":
-            site_landslide,
-
-        "Flood":
-            site_flood,
-
-        "Ground Collapse":
-            site_ground
-
+    site_hazards = {
+        "Landslide": site_landslide,
+        "Flood": site_flood,
+        "Ground Collapse": site_ground
     }
 
-
-    site_highest_hazard = max(
-
-        site_risks,
-
+    site_highest = max(
+        site_hazards,
         key=lambda x:
-            risk_order[
-                site_risks[x]
-            ]
-
+        risk_number(site_hazards[x])
     )
 
-
-    site_overall = site_risks[
-        site_highest_hazard
-    ]
-
+    site_overall = site_hazards[site_highest]
 
     if site_overall == "HIGH":
-
         marker_color = "red"
 
     elif site_overall == "MEDIUM":
-
         marker_color = "orange"
 
     else:
-
         marker_color = "green"
 
 
     popup_html = f"""
-
     <div style="width:280px">
 
-        <h4>
-            📍 {site['name']}
-        </h4>
+        <h4>📍 {site['name']}</h4>
 
-        <b>Site ID:</b>
-        {site_id}
-
-        <br>
+        <b>Site ID:</b> {site_id}<br>
 
         <b>Location:</b>
-        {site['city']},
-        {site['state']}
+        {site['city']}, {site['state']}<br>
 
-        <br>
-
-        <b>Status:</b>
-        🟢 {site['status']}
+        <b>Status:</b> 🟢 {site['status']}
 
         <hr>
 
         <b>🌧️ Rainfall:</b>
-        {data['rainfall']} mm
-
-        <br>
+        {data['rainfall']} mm<br>
 
         <b>💧 Soil Moisture:</b>
-        {data['soil_moisture']} %
-
-        <br>
+        {data['soil_moisture']} %<br>
 
         <b>📈 Ground Movement:</b>
-        {data['ground_movement']} mm
-
-        <br>
+        {data['ground_movement']} mm<br>
 
         <b>🌊 Water Level:</b>
         {data['water_level']} %
@@ -1073,14 +795,10 @@ for site_id, site in (
         <hr>
 
         <b>🏔️ Landslide:</b>
-        {site_landslide}
-
-        <br>
+        {site_landslide}<br>
 
         <b>🌊 Flood:</b>
-        {site_flood}
-
-        <br>
+        {site_flood}<br>
 
         <b>⛏️ Ground Collapse:</b>
         {site_ground}
@@ -1088,201 +806,66 @@ for site_id, site in (
         <hr>
 
         <b>⚠️ Overall Risk:</b>
-        {site_overall}
-
-        <br><br>
+        {site_overall}<br>
 
         <small>
-            Last update:
-            {data['last_update']}
+        Last update: {data['last_update']}
         </small>
 
     </div>
-
     """
 
-
     folium.Marker(
-
         location=[
-
             site["latitude"],
-
             site["longitude"]
-
         ],
-
         popup=folium.Popup(
-
             popup_html,
-
             max_width=320
-
         ),
-
         tooltip=(
-
             f"{site['name']} | "
             f"{site_overall} RISK"
-
         ),
-
         icon=folium.Icon(
-
             color=marker_color,
-
             icon="info-sign"
-
         )
-
     ).add_to(hazard_map)
 
 
-# =========================================================
-# DISPLAY MAP
-# =========================================================
-
-map_result = st_folium(
-
+st_folium(
     hazard_map,
-
     width=None,
-
-    height=550,
-
-    returned_objects=[
-        "last_object_clicked"
-    ]
-
+    height=550
 )
-
-
-# =========================================================
-# MAP CLICK
-# =========================================================
-
-clicked = map_result.get(
-    "last_object_clicked"
-)
-
-
-if clicked:
-
-    clicked_lat = clicked.get(
-        "lat"
-    )
-
-    clicked_lon = clicked.get(
-        "lng"
-    )
-
-
-    if (
-
-        clicked_lat is not None
-
-        and
-
-        clicked_lon is not None
-
-    ):
-
-        nearest_site = None
-
-        smallest_distance = (
-            float("inf")
-        )
-
-
-        for site_id, site in (
-            MONITORING_SITES.items()
-        ):
-
-            distance = (
-
-                (
-                    site["latitude"]
-                    - clicked_lat
-                ) ** 2
-
-                +
-
-                (
-                    site["longitude"]
-                    - clicked_lon
-                ) ** 2
-
-            )
-
-
-            if (
-                distance
-                <
-                smallest_distance
-            ):
-
-                smallest_distance = (
-                    distance
-                )
-
-                nearest_site = (
-                    site_id
-                )
-
-
-        if (
-
-            nearest_site
-
-            and
-
-            nearest_site
-            !=
-            st.session_state[
-                "selected_site_id"
-            ]
-
-        ):
-
-            st.session_state[
-                "selected_site_id"
-            ] = nearest_site
-
-            st.rerun()
 
 
 # =========================================================
 # SITE DETAILS
 # =========================================================
 
-st.subheader(
-    "📋 Monitoring Site Details"
-)
+st.subheader("📋 Monitoring Site Details")
 
+d1, d2 = st.columns(2)
 
-detail1, detail2 = st.columns(2)
-
-
-with detail1:
+with d1:
 
     st.write(
-        f"**Site:** "
-        f"{selected_site['name']}"
+        f"**Site:** {selected_site['name']}"
     )
 
     st.write(
-        f"**Site ID:** "
-        f"{selected_site_id}"
+        f"**Site ID:** {selected_site_id}"
     )
 
     st.write(
-        f"**City:** "
-        f"{selected_site['city']}"
+        f"**City:** {selected_site['city']}"
     )
 
     st.write(
-        f"**State:** "
-        f"{selected_site['state']}"
+        f"**State:** {selected_site['state']}"
     )
 
     st.write(
@@ -1292,7 +875,7 @@ with detail1:
     )
 
 
-with detail2:
+with d2:
 
     st.write(
         f"**Landslide:** "
@@ -1306,7 +889,7 @@ with detail2:
 
     st.write(
         f"**Ground Collapse:** "
-        f"{ground_collapse_risk}"
+        f"{ground_risk}"
     )
 
     st.write(
@@ -1316,60 +899,32 @@ with detail2:
 
 
 # =========================================================
-# HISTORICAL MONITORING
+# HISTORY
 # =========================================================
 
-st.subheader(
-    "📊 Historical Monitoring"
+st.subheader("📊 Historical Monitoring")
+
+HISTORY_FILE = os.path.join(
+    "data",
+    "monitoring_history.csv"
 )
-
-
-HISTORY_FILE = (
-    "data/monitoring_history.csv"
-)
-
 
 history_record = {
-
-    "timestamp":
-        datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        ),
-
-    "site_id":
-        selected_site_id,
-
-    "site_name":
-        selected_site["name"],
-
-    "rainfall":
-        selected_data["rainfall"],
-
-    "soil_moisture":
-        selected_data["soil_moisture"],
-
-    "ground_movement":
-        selected_data[
-            "ground_movement"
-        ],
-
-    "water_level":
-        selected_data[
-            "water_level"
-        ],
-
-    "landslide_risk":
-        landslide_prediction,
-
-    "flood_risk":
-        flood_risk,
-
-    "ground_collapse_risk":
-        ground_collapse_risk
+    "timestamp": datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    ),
+    "site_id": selected_site_id,
+    "site_name": selected_site["name"],
+    "rainfall": selected_data["rainfall"],
+    "soil_moisture": selected_data["soil_moisture"],
+    "ground_movement": selected_data["ground_movement"],
+    "water_level": selected_data["water_level"],
+    "landslide_risk": landslide_prediction,
+    "flood_risk": flood_risk,
+    "ground_collapse_risk": ground_risk
 }
 
 
-# Only create history once per automatic refresh
 if (
     "last_history_refresh"
     not in st.session_state
@@ -1384,9 +939,7 @@ if (
     st.session_state.last_history_refresh
 ):
 
-    if os.path.exists(
-        HISTORY_FILE
-    ):
+    if os.path.exists(HISTORY_FILE):
 
         history_df = pd.read_csv(
             HISTORY_FILE
@@ -1397,146 +950,99 @@ if (
         history_df = pd.DataFrame()
 
 
-    new_row = pd.DataFrame(
-        [history_record]
-    )
-
-
     history_df = pd.concat(
-
         [
             history_df,
-            new_row
+            pd.DataFrame([history_record])
         ],
-
         ignore_index=True
-
     )
 
+    os.makedirs(
+        "data",
+        exist_ok=True
+    )
 
     history_df.to_csv(
         HISTORY_FILE,
         index=False
     )
 
-
     st.session_state.last_history_refresh = (
         refresh_count
     )
 
 
-if os.path.exists(
-    HISTORY_FILE
-):
+if os.path.exists(HISTORY_FILE):
 
     history_df = pd.read_csv(
         HISTORY_FILE
     )
 
-    if not history_df.empty:
+    site_history = history_df[
+        history_df["site_id"] ==
+        selected_site_id
+    ].copy()
 
-        site_history = history_df[
-            history_df["site_id"]
-            ==
-            selected_site_id
-        ].copy()
+    if len(site_history) > 1:
 
+        site_history["timestamp"] = pd.to_datetime(
+            site_history["timestamp"],
+            errors="coerce"
+        )
 
-        if len(site_history) > 1:
+        site_history = site_history.sort_values(
+            "timestamp"
+        )
 
-            site_history[
+        st.line_chart(
+            site_history.set_index(
                 "timestamp"
-            ] = pd.to_datetime(
-
-                site_history[
-                    "timestamp"
-                ],
-
-                errors="coerce"
-
-            )
-
-
-            site_history = (
-                site_history
-                .sort_values(
-                    "timestamp"
-                )
-            )
-
-
-            st.line_chart(
-
-                site_history.set_index(
-                    "timestamp"
-                )[
-
-                    [
-
-                        "rainfall",
-
-                        "soil_moisture",
-
-                        "ground_movement",
-
-                        "water_level"
-
-                    ]
-
+            )[
+                [
+                    "rainfall",
+                    "soil_moisture",
+                    "ground_movement",
+                    "water_level"
                 ]
+            ]
+        )
 
-            )
+    else:
 
-        else:
-
-            st.info(
-                "Collecting historical readings..."
-            )
+        st.info(
+            "Collecting historical readings..."
+        )
 
 
 # =========================================================
 # SYSTEM STATUS
 # =========================================================
 
-st.subheader(
-    "⚙️ System Status"
-)
+st.subheader("⚙️ System Status")
 
+s1, s2, s3 = st.columns(3)
 
-status1, status2, status3 = (
-    st.columns(3)
-)
+with s1:
+    st.success("AI Model: ONLINE")
 
-
-with status1:
-
-    st.success(
-        "AI Model: ONLINE"
-    )
-
-
-with status2:
-
+with s2:
     st.success(
         f"Monitoring Sites: "
         f"{len(MONITORING_SITES)} ONLINE"
     )
 
-
-with status3:
-
-    st.success(
-        "Alert Engine: ACTIVE"
-    )
+with s3:
+    st.success("Alert Engine: ACTIVE")
 
 
 # =========================================================
-# PROTOTYPE NOTICE
+# NOTICE
 # =========================================================
 
 st.caption(
     "Prototype: sensor values are currently "
-    "simulated. In deployment, the same "
-    "pipeline will receive measurements "
-    "from field monitoring units."
+    "simulated. In deployment, the same pipeline "
+    "will receive measurements from field "
+    "monitoring units."
 )

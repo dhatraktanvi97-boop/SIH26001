@@ -285,7 +285,7 @@ st.sidebar.title(
     "🌍 Monitoring Network"
 )
 
-
+st.sidebar.error("TEST: NEW APP.PY IS RUNNING")
 # =========================================================
 # SELECT SITE
 # =========================================================

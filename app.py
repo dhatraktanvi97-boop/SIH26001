@@ -4,12 +4,11 @@ import joblib
 import random
 import os
 import pandas as pd
-import time
 from datetime import datetime
 from streamlit_folium import st_folium
 from streamlit_autorefresh import st_autorefresh
 
-from data.sites import MONITORING_SITES
+from data.site_manager import load_sites, add_site, delete_site
 from database.data_receiver import receive_sensor_data
 
 
@@ -25,10 +24,17 @@ st.set_page_config(
 
 
 # =========================================================
+# LOAD MONITORING SITES
+# =========================================================
+
+MONITORING_SITES = load_sites()
+
+
+# =========================================================
 # AUTO REFRESH
 # =========================================================
 
-st_autorefresh(
+refresh_count = st_autorefresh(
     interval=10000,
     key="sensor_refresh"
 )
@@ -38,7 +44,10 @@ st_autorefresh(
 # LOAD AI MODEL
 # =========================================================
 
-MODEL_PATH = "ai_model/landslide_model.pkl"
+MODEL_PATH = os.path.join(
+    "ai_model",
+    "landslide_model.pkl"
+)
 
 if not os.path.exists(MODEL_PATH):
 
@@ -48,7 +57,6 @@ if not os.path.exists(MODEL_PATH):
     )
 
     st.stop()
-
 
 model = joblib.load(MODEL_PATH)
 
@@ -142,7 +150,6 @@ def generate_sensor_reading(
                 )
         }
 
-
     rainfall = (
         previous["rainfall"]
         + random.uniform(-8, 15)
@@ -163,7 +170,6 @@ def generate_sensor_reading(
         + random.uniform(-3, 6)
     )
 
-
     rainfall = max(
         0,
         min(300, rainfall)
@@ -183,7 +189,6 @@ def generate_sensor_reading(
         0,
         min(100, water_level)
     )
-
 
     return {
 
@@ -207,27 +212,32 @@ def generate_sensor_reading(
 
 
 # =========================================================
-# INITIALIZE SITE DATA
+# INITIALIZE SESSION STATE
 # =========================================================
 
 if "site_data" not in st.session_state:
 
     st.session_state.site_data = {}
 
-    for site_id in MONITORING_SITES:
+
+# Add sensor data for every existing/new site
+for site_id in MONITORING_SITES:
+
+    if site_id not in st.session_state.site_data:
 
         st.session_state.site_data[site_id] = (
             generate_sensor_reading()
         )
 
 
-# =========================================================
-# TRACK NEW READING
-# =========================================================
+# Remove session data for deleted sites
+for site_id in list(
+    st.session_state.site_data.keys()
+):
 
-if "new_reading" not in st.session_state:
+    if site_id not in MONITORING_SITES:
 
-    st.session_state.new_reading = False
+        del st.session_state.site_data[site_id]
 
 
 # =========================================================
@@ -238,8 +248,29 @@ site_ids = list(
     MONITORING_SITES.keys()
 )
 
+if not site_ids:
 
-if "selected_site_id" not in st.session_state:
+    st.error(
+        "No monitoring sites available."
+    )
+
+    st.stop()
+
+
+if (
+    "selected_site_id"
+    not in st.session_state
+):
+
+    st.session_state.selected_site_id = (
+        site_ids[0]
+    )
+
+
+if (
+    st.session_state.selected_site_id
+    not in site_ids
+):
 
     st.session_state.selected_site_id = (
         site_ids[0]
@@ -255,6 +286,10 @@ st.sidebar.title(
 )
 
 
+# =========================================================
+# SELECT SITE
+# =========================================================
+
 selected_site_id = st.sidebar.selectbox(
 
     "Select Monitoring Site",
@@ -264,13 +299,207 @@ selected_site_id = st.sidebar.selectbox(
     key="selected_site_id",
 
     format_func=lambda x:
-        MONITORING_SITES[x]["name"]
+        (
+            f"{MONITORING_SITES[x]['name']}"
+            f" ({x})"
+        )
 )
 
 
 selected_site = MONITORING_SITES[
     selected_site_id
 ]
+
+
+# =========================================================
+# ADD MONITORING SITE
+# =========================================================
+
+st.sidebar.divider()
+
+st.sidebar.subheader(
+    "➕ Add Monitoring Site"
+)
+
+with st.sidebar.form(
+    "add_site_form",
+    clear_on_submit=True
+):
+
+    new_site_id = st.text_input(
+        "Site ID",
+        placeholder="Example: SIK-01"
+    )
+
+    new_site_name = st.text_input(
+        "Site Name",
+        placeholder="Example: Sikkim Site 01"
+    )
+
+    new_city = st.text_input(
+        "City",
+        placeholder="Example: Gangtok"
+    )
+
+    new_state = st.text_input(
+        "State",
+        placeholder="Example: Sikkim"
+    )
+
+    new_latitude = st.number_input(
+        "Latitude",
+        min_value=-90.0,
+        max_value=90.0,
+        value=25.000000,
+        format="%.6f"
+    )
+
+    new_longitude = st.number_input(
+        "Longitude",
+        min_value=-180.0,
+        max_value=180.0,
+        value=92.000000,
+        format="%.6f"
+    )
+
+    add_button = st.form_submit_button(
+        "➕ Add Site",
+        use_container_width=True
+    )
+
+
+if add_button:
+
+    if not new_site_id.strip():
+
+        st.sidebar.error(
+            "Enter Site ID."
+        )
+
+    elif not new_site_name.strip():
+
+        st.sidebar.error(
+            "Enter Site Name."
+        )
+
+    elif not new_city.strip():
+
+        st.sidebar.error(
+            "Enter City."
+        )
+
+    elif not new_state.strip():
+
+        st.sidebar.error(
+            "Enter State."
+        )
+
+    else:
+
+        success, message = add_site(
+
+            new_site_id,
+
+            new_site_name,
+
+            new_city,
+
+            new_state,
+
+            new_latitude,
+
+            new_longitude
+        )
+
+        if success:
+
+            st.session_state.site_data[
+                new_site_id.strip().upper()
+            ] = generate_sensor_reading()
+
+            st.session_state.selected_site_id = (
+                new_site_id.strip().upper()
+            )
+
+            st.sidebar.success(
+                message
+            )
+
+            st.rerun()
+
+        else:
+
+            st.sidebar.error(
+                message
+            )
+
+
+# =========================================================
+# DELETE MONITORING SITE
+# =========================================================
+
+st.sidebar.divider()
+
+with st.sidebar.expander(
+    "🗑️ Remove Monitoring Site"
+):
+
+    delete_site_id = st.selectbox(
+
+        "Select Site",
+
+        site_ids,
+
+        format_func=lambda x:
+            (
+                f"{MONITORING_SITES[x]['name']}"
+                f" ({x})"
+            ),
+
+        key="delete_site_selector"
+    )
+
+    if st.button(
+        "🗑️ Delete Site",
+        use_container_width=True
+    ):
+
+        if len(site_ids) <= 1:
+
+            st.error(
+                "At least one monitoring site must remain."
+            )
+
+        else:
+
+            success, message = delete_site(
+                delete_site_id
+            )
+
+            if success:
+
+                if (
+                    delete_site_id
+                    in st.session_state.site_data
+                ):
+
+                    del st.session_state.site_data[
+                        delete_site_id
+                    ]
+
+                st.session_state.selected_site_id = (
+                    site_ids[0]
+                    if site_ids[0] != delete_site_id
+                    else site_ids[1]
+                )
+
+                st.rerun()
+
+            else:
+
+                st.error(
+                    message
+                )
 
 
 # =========================================================
@@ -284,6 +513,7 @@ previous_data = (
 )
 
 
+# Update selected site every automatic refresh
 new_sensor_data = generate_sensor_reading(
     previous_data
 )
@@ -322,7 +552,6 @@ st.session_state.site_data[
 
     "last_update":
         received_packet["timestamp"]
-
 }
 
 
@@ -334,11 +563,12 @@ selected_data = (
 
 
 # =========================================================
-# MANUAL UPDATE BUTTON
+# MANUAL UPDATE
 # =========================================================
 
 if st.sidebar.button(
-    "🔄 Get New Sensor Readings"
+    "🔄 Get New Sensor Readings",
+    use_container_width=True
 ):
 
     st.rerun()
@@ -360,7 +590,7 @@ st.caption(
 
 
 # =========================================================
-# LIVE STATUS
+# STATUS
 # =========================================================
 
 st.success(
@@ -376,19 +606,16 @@ st.subheader(
     f"📍 {selected_site['name']}"
 )
 
-
 st.write(
     f"**Location:** "
     f"{selected_site['city']}, "
     f"{selected_site['state']}"
 )
 
-
 st.write(
     f"**Site ID:** `{selected_site_id}`  |  "
     f"**Status:** 🟢 {selected_site['status']}"
 )
-
 
 st.caption(
     f"Last sensor update: "
@@ -449,7 +676,6 @@ flood_score = calculate_flood_score(
 
 )
 
-
 flood_risk = risk_level(
     flood_score
 )
@@ -472,7 +698,6 @@ ground_collapse_score = (
 
     )
 )
-
 
 ground_collapse_risk = risk_level(
     ground_collapse_score
@@ -526,7 +751,7 @@ overall_risk = risk_values[
 
 
 # =========================================================
-# ALERT
+# CURRENT ALERT
 # =========================================================
 
 st.subheader(
@@ -564,9 +789,7 @@ st.subheader(
     "📡 Live Sensor Readings"
 )
 
-
 col1, col2, col3, col4 = st.columns(4)
-
 
 with col1:
 
@@ -575,7 +798,6 @@ with col1:
         f"{selected_data['rainfall']} mm"
     )
 
-
 with col2:
 
     st.metric(
@@ -583,14 +805,12 @@ with col2:
         f"{selected_data['soil_moisture']} %"
     )
 
-
 with col3:
 
     st.metric(
         "Ground Movement",
         f"{selected_data['ground_movement']} mm"
     )
-
 
 with col4:
 
@@ -607,7 +827,6 @@ with col4:
 st.subheader(
     "🧠 AI Hazard Analysis"
 )
-
 
 col1, col2, col3 = st.columns(3)
 
@@ -664,7 +883,7 @@ with col3:
 
 
 # =========================================================
-# MAP
+# REGIONAL MAP
 # =========================================================
 
 st.subheader(
@@ -686,7 +905,7 @@ hazard_map = folium.Map(
 
 
 # =========================================================
-# ADD SITES
+# ADD ALL MONITORING SITES
 # =========================================================
 
 for site_id, site in (
@@ -998,7 +1217,8 @@ if clicked:
 
             if (
                 distance
-                < smallest_distance
+                <
+                smallest_distance
             ):
 
                 smallest_distance = (
@@ -1149,6 +1369,62 @@ history_record = {
 }
 
 
+# Only create history once per automatic refresh
+if (
+    "last_history_refresh"
+    not in st.session_state
+):
+
+    st.session_state.last_history_refresh = -1
+
+
+if (
+    refresh_count
+    !=
+    st.session_state.last_history_refresh
+):
+
+    if os.path.exists(
+        HISTORY_FILE
+    ):
+
+        history_df = pd.read_csv(
+            HISTORY_FILE
+        )
+
+    else:
+
+        history_df = pd.DataFrame()
+
+
+    new_row = pd.DataFrame(
+        [history_record]
+    )
+
+
+    history_df = pd.concat(
+
+        [
+            history_df,
+            new_row
+        ],
+
+        ignore_index=True
+
+    )
+
+
+    history_df.to_csv(
+        HISTORY_FILE,
+        index=False
+    )
+
+
+    st.session_state.last_history_refresh = (
+        refresh_count
+    )
+
+
 if os.path.exists(
     HISTORY_FILE
 ):
@@ -1157,92 +1433,65 @@ if os.path.exists(
         HISTORY_FILE
     )
 
-else:
+    if not history_df.empty:
 
-    history_df = pd.DataFrame()
-
-
-new_row = pd.DataFrame(
-    [history_record]
-)
-
-
-history_df = pd.concat(
-
-    [
-        history_df,
-        new_row
-    ],
-
-    ignore_index=True
-
-)
+        site_history = history_df[
+            history_df["site_id"]
+            ==
+            selected_site_id
+        ].copy()
 
 
-history_df.to_csv(
-    HISTORY_FILE,
-    index=False
-)
-
-
-if not history_df.empty:
-
-    site_history = history_df[
-
-        history_df["site_id"]
-        ==
-        selected_site_id
-
-    ].copy()
-
-
-    if len(site_history) > 1:
-
-        site_history[
-            "timestamp"
-        ] = pd.to_datetime(
+        if len(site_history) > 1:
 
             site_history[
                 "timestamp"
-            ]
+            ] = pd.to_datetime(
 
-        )
+                site_history[
+                    "timestamp"
+                ],
 
+                errors="coerce"
 
-        site_history = (
-            site_history.sort_values(
-                "timestamp"
             )
-        )
 
 
-        st.line_chart(
+            site_history = (
+                site_history
+                .sort_values(
+                    "timestamp"
+                )
+            )
 
-            site_history.set_index(
-                "timestamp"
-            )[
 
-                [
+            st.line_chart(
 
-                    "rainfall",
+                site_history.set_index(
+                    "timestamp"
+                )[
 
-                    "soil_moisture",
+                    [
 
-                    "ground_movement",
+                        "rainfall",
 
-                    "water_level"
+                        "soil_moisture",
+
+                        "ground_movement",
+
+                        "water_level"
+
+                    ]
 
                 ]
 
-            ]
+            )
 
-        )
+        else:
 
-    else:
-
-        st.info(
-            "Collecting historical readings..."
-        )
+            st.info(
+                "Collecting historical readings..."
+            )
 
 
 # =========================================================
@@ -1269,7 +1518,8 @@ with status1:
 with status2:
 
     st.success(
-        "Monitoring Network: ONLINE"
+        f"Monitoring Sites: "
+        f"{len(MONITORING_SITES)} ONLINE"
     )
 
 
